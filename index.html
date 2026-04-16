@@ -33,11 +33,42 @@
     const codeReader = new ZXing.BrowserMultiFormatReader();
     const resultDiv = document.getElementById('result');
 
-    codeReader.decodeFromVideoDevice(null, 'video', (result, err) => {
-      if (result) {
-        resultDiv.textContent = result.getText();
+    async function startScanner() {
+      try {
+        const devices = await codeReader.listVideoInputDevices();
+        const backCamera = devices.find(device =>
+        device.label.toLowerCase().includes('back') ||
+        device.label.toLowerCase().includes('rear')
+        );
+
+        const selectedDeviceId = backCamera?.deviceId || devices[0]?.deviceId;
+
+        if (!selectedDeviceId) {
+          resultDiv.textContent = "No camera found";
+          return;
+        }
+
+        codeReader.decodeFromVideoDevice(selectedDeviceId, 'video', (result, err) => {
+          if (result) {
+            resultDiv.textContent = result.getText();
+
+            // Optional: stop after successful scan
+            codeReader.reset();
+          }
+
+          if (err && !(err instanceof ZXing.NotFoundException)) {
+            console.error(err);
+            resultDiv.textContent = "Error: " + err;
+          }
+        });
+
+      } catch (error) {
+        console.error(error);
+        resultDiv.textContent = "Camera access denied or not available";
       }
-    });
+    }
+
+    startScanner();
   </script>
 
 </body>

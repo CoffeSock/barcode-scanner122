@@ -2,74 +2,123 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Barcode Scanner</title>
-  <script src="https://unpkg.com/@zxing/library@latest"></script>
+  <title>Native Barcode Scanner</title>
   <style>
     body {
-      font-family: Arial;
+      font-family: Arial, sans-serif;
       text-align: center;
       background: #111;
       color: white;
     }
+
     video {
       width: 90%;
       max-width: 400px;
       margin-top: 20px;
       border-radius: 10px;
     }
+
     #result {
       margin-top: 20px;
       font-size: 24px;
+      word-break: break-all;
+    }
+
+    #status {
+      margin-top: 10px;
+      font-size: 14px;
+      opacity: 0.7;
     }
   </style>
 </head>
+
 <body>
 
-  <h2>Scan Barcode</h2>
-  <video id="video"></video>
-  <div id="result">Waiting...</div>
+<h2>Barcode Scanner</h2>
 
-  <script>
-    const codeReader = new ZXing.BrowserMultiFormatReader();
-    const resultDiv = document.getElementById('result');
+<video id="video" autoplay></video>
+<div id="result">Waiting...</div>
+<div id="status"></div>
 
-    async function startScanner() {
-      try {
-        const devices = await codeReader.listVideoInputDevices();
-        const backCamera = devices.find(device =>
-        device.label.toLowerCase().includes('back') ||
-        device.label.toLowerCase().includes('rear')
-        );
+<script>
+const video = document.getElementById("video");
+const resultDiv = document.getElementById("result");
+const statusDiv = document.getElementById("status");
 
-        const selectedDeviceId = backCamera?.deviceId || devices[0]?.deviceId;
+let stream;
+let detector;
 
-        if (!selectedDeviceId) {
-          resultDiv.textContent = "No camera found";
-          return;
-        }
+// -------------------- CHECK SUPPORT --------------------
+if (!("BarcodeDetector" in window)) {
+  resultDiv.textContent = "BarcodeDetector NOT supported in this browser";
+  statusDiv.textContent = "Use Chrome (Android/Desktop) or Edge";
+} else {
+  init();
+}
 
-        codeReader.decodeFromVideoDevice(selectedDeviceId, 'video', (result, err) => {
-          if (result) {
-            resultDiv.textContent = result.getText();
+// -------------------- INIT --------------------
+async function init() {
+  try {
+    statusDiv.textContent = "Requesting camera...";
 
-            // Optional: stop after successful scan
-            codeReader.reset();
-          }
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: "environment"
+      }
+    });
 
-          if (err && !(err instanceof ZXing.NotFoundException)) {
-            console.error(err);
-            resultDiv.textContent = "Error: " + err;
-          }
-        });
+    video.srcObject = stream;
+    await video.play();
 
-      } catch (error) {
-        console.error(error);
-        resultDiv.textContent = "Camera access denied or not available";
+    statusDiv.textContent = "Starting detector...";
+
+    detector = new BarcodeDetector({
+      formats: [
+        "ean_13",
+        "ean_8",
+        "upc_a",
+        "upc_e",
+        "code_128",
+        "code_39",
+        "itf"
+      ]
+    });
+
+    scanLoop();
+
+  } catch (err) {
+    console.error(err);
+    resultDiv.textContent = "Camera error / permission denied";
+  }
+}
+
+// -------------------- SCAN LOOP --------------------
+async function scanLoop() {
+  try {
+    if (video.readyState === video.HAVE_ENOUGH_DATA) {
+      const barcodes = await detector.detect(video);
+
+      if (barcodes.length > 0) {
+        const value = barcodes[0].rawValue;
+        resultDiv.textContent = "FOUND: " + value;
+        statusDiv.textContent = "Scan complete";
+
+        // Optional: stop camera after success
+        stream.getTracks().forEach(t => t.stop());
+        return;
+      } else {
+        statusDiv.textContent = "Scanning...";
       }
     }
+  } catch (err) {
+    console.error(err);
+    statusDiv.textContent = "Detection error (retrying...)";
+  }
 
-    startScanner();
-  </script>
+  requestAnimationFrame(scanLoop);
+}
+</script>
 
 </body>
+</html>
 </html>

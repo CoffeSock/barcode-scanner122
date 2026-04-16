@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Barcode Scanner</title>
+  <script src="https://unpkg.com/@zxing/library@latest"></script>
+  <style>
+    body {
+      font-family: Arial;
+      text-align: center;
+      background: #111;
+      color: white;
+    }
+    video {
+      width: 90%;
+      max-width: 400px;
+      margin-top: 20px;
+      border-radius: 10px;
+    }
+    #result {
+      margin-top: 20px;
+      font-size: 24px;
+    }
+  </style>
+</head>
+<body>
+
+  <h2>Scan Barcode</h2>
+  <video id="video"></video>
+  <div id="result">Waiting...</div>
+
+  <script>
+    const codeReader = new ZXing.BrowserMultiFormatReader();
+    const resultDiv = document.getElementById('result');
+
+    codeReader.decodeFromVideoDevice(null, 'video', (result, err) => {
+      if (result) {
+        resultDiv.textContent = result.getText();
+      }
+    });
+  </script>
+
+</body>
+</html>

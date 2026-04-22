@@ -40,7 +40,25 @@
 <div id="result">Waiting...</div>
 <div id="status"></div>
 
-<script>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+import { getFirestore, doc, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+// -------------------- FIREBASE INIT --------------------
+const firebaseConfig = {
+  apiKey: "AIzaSyBm1iZ3twTkqf4sxwKunm9v7dQ4L6o1ZFM",
+  authDomain: "barcode-scanner-ca39c.firebaseapp.com",
+  projectId: "barcode-scanner-ca39c",
+  storageBucket: "barcode-scanner-ca39c.firebasestorage.app",
+  messagingSenderId: "998722844813",
+  appId: "1:998722844813:web:dffcb34dc8903682c04ac4",
+  measurementId: "G-K0E44DY403"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+// -------------------- UI --------------------
 const video = document.getElementById("video");
 const resultDiv = document.getElementById("result");
 const statusDiv = document.getElementById("status");
@@ -50,8 +68,8 @@ let detector;
 
 // -------------------- CHECK SUPPORT --------------------
 if (!("BarcodeDetector" in window)) {
-  resultDiv.textContent = "BarcodeDetector NOT supported in this browser";
-  statusDiv.textContent = "Use Chrome (Android/Desktop) or Edge";
+  resultDiv.textContent = "BarcodeDetector NOT supported";
+  statusDiv.textContent = "Use Chrome or Edge";
 } else {
   init();
 }
@@ -62,9 +80,7 @@ async function init() {
     statusDiv.textContent = "Requesting camera...";
 
     stream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        facingMode: "environment"
-      }
+      video: { facingMode: "environment" }
     });
 
     video.srcObject = stream;
@@ -73,15 +89,7 @@ async function init() {
     statusDiv.textContent = "Starting detector...";
 
     detector = new BarcodeDetector({
-      formats: [
-        "ean_13",
-        "ean_8",
-        "upc_a",
-        "upc_e",
-        "code_128",
-        "code_39",
-        "itf"
-      ]
+      formats: ["ean_13","ean_8","upc_a","upc_e","code_128","code_39","itf"]
     });
 
     scanLoop();
@@ -100,10 +108,13 @@ async function scanLoop() {
 
       if (barcodes.length > 0) {
         const value = barcodes[0].rawValue;
-        resultDiv.textContent = "FOUND: " + value;
-        statusDiv.textContent = "Scan complete";
 
-        // Optional: stop camera after success
+        resultDiv.textContent = "Checking: " + value;
+        statusDiv.textContent = "Contacting database...";
+
+        await checkCode(value);
+
+        // stop camera after scan
         stream.getTracks().forEach(t => t.stop());
         return;
       } else {
@@ -112,10 +123,38 @@ async function scanLoop() {
     }
   } catch (err) {
     console.error(err);
-    statusDiv.textContent = "Detection error (retrying...)";
+    statusDiv.textContent = "Detection error...";
   }
 
   requestAnimationFrame(scanLoop);
+}
+
+// -------------------- FIREBASE CHECK --------------------
+async function checkCode(code) {
+  try {
+    const codeRef = doc(db, "codes", code);
+    const docSnap = await getDoc(codeRef);
+
+    if (!docSnap.exists()) {
+      resultDiv.textContent = "❌ Invalid code";
+      statusDiv.textContent = "Not found in database";
+    } 
+    else if (docSnap.data().used) {
+      resultDiv.textContent = "⚠️ Already used";
+      statusDiv.textContent = "This code was already scanned";
+    } 
+    else {
+      await updateDoc(codeRef, { used: true });
+
+      resultDiv.textContent = "✅ Valid!";
+      statusDiv.textContent = "Code accepted and marked used";
+    }
+
+  } catch (err) {
+    console.error(err);
+    resultDiv.textContent = "Error checking code";
+    statusDiv.textContent = "Check console";
+  }
 }
 </script>
 

@@ -3,56 +3,112 @@
 <head>
   <meta charset="UTF-8">
   <title>Native Barcode Scanner</title>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      text-align: center;
-      background: #111;
-      color: white;
-    }
+<style>
+body {
+  font-family: Arial, sans-serif;
+  text-align: center;
+  background: linear-gradient(135deg, #0f2027, #203a43, #2c5364);
+  color: white;
+  margin: 0;
+  padding: 20px;
+}
 
-    video {
-      width: 90%;
-      max-width: 400px;
-      margin-top: 20px;
-      border-radius: 10px;
-    }
+h2 {
+  margin-bottom: 10px;
+}
 
-    #result {
-      margin-top: 20px;
-      font-size: 24px;
-      word-break: break-all;
-    }
+video {
+  width: 90%;
+  max-width: 400px;
+  margin-top: 20px;
+  border-radius: 12px;
+  box-shadow: 0 0 20px rgba(0,0,0,0.5);
+}
 
-    #status {
-      margin-top: 10px;
-      font-size: 14px;
-      opacity: 0.7;
-    }
-  </style>
+.controls {
+  margin-bottom: 10px;
+}
+
+button {
+  padding: 10px 16px;
+  border: none;
+  border-radius: 8px;
+  background: #00c6ff;
+  color: black;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+button:hover {
+  background: #00a2cc;
+}
+
+.card {
+  margin-top: 20px;
+  font-size: 22px;
+  padding: 15px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.1);
+}
+
+#status {
+  margin-top: 10px;
+  font-size: 14px;
+  opacity: 0.8;
+}
+
+.stats {
+  margin-top: 20px;
+  display: flex;
+  justify-content: space-around;
+  flex-wrap: wrap;
+}
+
+.stat {
+  padding: 10px;
+  border-radius: 10px;
+  min-width: 100px;
+  margin: 5px;
+}
+
+.accepted { background: rgba(0,255,0,0.2); }
+.used { background: rgba(255,165,0,0.2); }
+.invalid { background: rgba(255,0,0,0.2); }
+</style>
 </head>
 
 <body>
 
-<h2>Barcode Scanner</h2>
+<h2>🎟 Barcode Scanner</h2>
+
+
+
+<div class="controls">
+  <button id="startBtn">▶ Start Scanning</button>
+  <button id="stopBtn">⏹ Stop</button>
+  <button id="modeBtn">Switch to ADD mode</button>
+</div>
 
 <video id="video" autoplay></video>
-<div id="result">Waiting...</div>
+
+<div id="result" class="card">Waiting...</div>
 <div id="status"></div>
+
+<div class="stats">
+  <div class="stat accepted">✅ Accepted: <span id="accepted">0</span></div>
+  <div class="stat used">⚠️ Used: <span id="used">0</span></div>
+  <div class="stat invalid">❌ Not invited: <span id="invalid">0</span></div>
+</div>
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import { getFirestore, doc, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-// -------------------- FIREBASE INIT --------------------
+// -------------------- FIREBASE --------------------
 const firebaseConfig = {
   apiKey: "AIzaSyBm1iZ3twTkqf4sxwKunm9v7dQ4L6o1ZFM",
   authDomain: "barcode-scanner-ca39c.firebaseapp.com",
   projectId: "barcode-scanner-ca39c",
-  storageBucket: "barcode-scanner-ca39c.firebasestorage.app",
-  messagingSenderId: "998722844813",
-  appId: "1:998722844813:web:dffcb34dc8903682c04ac4",
-  measurementId: "G-K0E44DY403"
 };
 
 const app = initializeApp(firebaseConfig);
@@ -63,30 +119,53 @@ const video = document.getElementById("video");
 const resultDiv = document.getElementById("result");
 const statusDiv = document.getElementById("status");
 
+const startBtn = document.getElementById("startBtn");
+const stopBtn = document.getElementById("stopBtn");
+
+// counters
+let acceptedCount = 0;
+let usedCount = 0;
+let invalidCount = 0;
+
+const acceptedEl = document.getElementById("accepted");
+const usedEl = document.getElementById("used");
+const invalidEl = document.getElementById("invalid");
+
+// state
 let stream;
 let detector;
+let scanning = false;
 
-// -------------------- CHECK SUPPORT --------------------
+// -------------------- BUTTONS --------------------
+startBtn.onclick = () => {
+  if (!scanning) {
+    scanning = true;
+    init();
+    statusDiv.textContent = "Scanner started";
+  }
+};
+
+stopBtn.onclick = () => {
+  scanning = false;
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  statusDiv.textContent = "Scanner stopped";
+};
+
+// -------------------- SUPPORT CHECK --------------------
 if (!("BarcodeDetector" in window)) {
   resultDiv.textContent = "BarcodeDetector NOT supported";
   statusDiv.textContent = "Use Chrome or Edge";
-} else {
-  init();
 }
 
 // -------------------- INIT --------------------
 async function init() {
   try {
-    statusDiv.textContent = "Requesting camera...";
-
     stream = await navigator.mediaDevices.getUserMedia({
       video: { facingMode: "environment" }
     });
 
     video.srcObject = stream;
     await video.play();
-
-    statusDiv.textContent = "Starting detector...";
 
     detector = new BarcodeDetector({
       formats: ["ean_13","ean_8","upc_a","upc_e","code_128","code_39","itf"]
@@ -96,12 +175,14 @@ async function init() {
 
   } catch (err) {
     console.error(err);
-    resultDiv.textContent = "Camera error / permission denied";
+    resultDiv.textContent = "Camera error";
   }
 }
 
 // -------------------- SCAN LOOP --------------------
 async function scanLoop() {
+  if (!scanning) return;
+
   try {
     if (video.readyState === video.HAVE_ENOUGH_DATA) {
       const barcodes = await detector.detect(video);
@@ -110,20 +191,22 @@ async function scanLoop() {
         const value = barcodes[0].rawValue;
 
         resultDiv.textContent = "Checking: " + value;
-        statusDiv.textContent = "Contacting database...";
-
         await checkCode(value);
 
-        // stop camera after scan
-        stream.getTracks().forEach(t => t.stop());
+        // pause briefly before next scan
+        scanning = false;
+
+        setTimeout(() => {
+          resultDiv.textContent = "Ready...";
+          scanning = true;
+          scanLoop();
+        }, 1500);
+
         return;
-      } else {
-        statusDiv.textContent = "Scanning...";
       }
     }
   } catch (err) {
     console.error(err);
-    statusDiv.textContent = "Detection error...";
   }
 
   requestAnimationFrame(scanLoop);
@@ -136,24 +219,32 @@ async function checkCode(code) {
     const docSnap = await getDoc(codeRef);
 
     if (!docSnap.exists()) {
-      resultDiv.textContent = "❌ Invalid code";
-      statusDiv.textContent = "Not found in database";
+      invalidCount++;
+      invalidEl.textContent = invalidCount;
+
+      resultDiv.textContent = "❌ Not invited";
+      resultDiv.style.background = "rgba(255,0,0,0.3)";
     } 
     else if (docSnap.data().used) {
+      usedCount++;
+      usedEl.textContent = usedCount;
+
       resultDiv.textContent = "⚠️ Already used";
-      statusDiv.textContent = "This code was already scanned";
+      resultDiv.style.background = "rgba(255,165,0,0.3)";
     } 
     else {
       await updateDoc(codeRef, { used: true });
 
-      resultDiv.textContent = "✅ Valid!";
-      statusDiv.textContent = "Code accepted and marked used";
+      acceptedCount++;
+      acceptedEl.textContent = acceptedCount;
+
+      resultDiv.textContent = "✅ Accepted";
+      resultDiv.style.background = "rgba(0,255,0,0.3)";
     }
 
   } catch (err) {
     console.error(err);
-    resultDiv.textContent = "Error checking code";
-    statusDiv.textContent = "Check console";
+    resultDiv.textContent = "Error";
   }
 }
 </script>
